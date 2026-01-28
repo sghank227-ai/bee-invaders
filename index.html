@@ -2,44 +2,127 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>🐝 小蜜蜂大作戰</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
+        html, body {
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        body {
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
             font-family: 'Segoe UI', sans-serif;
+            padding: 10px;
         }
         #gameContainer {
             text-align: center;
+            max-width: 100%;
         }
         #gameCanvas {
             border: 3px solid #f39c12;
             border-radius: 10px;
             box-shadow: 0 0 30px rgba(243, 156, 18, 0.3);
+            max-width: 100%;
+            height: auto;
+            touch-action: none;
         }
         #info {
             color: #fff;
-            margin-bottom: 15px;
-            font-size: 18px;
+            margin-bottom: 10px;
+            font-size: clamp(14px, 4vw, 18px);
         }
         #score { color: #f39c12; font-weight: bold; }
         #lives { color: #e74c3c; }
         #level { color: #2ecc71; }
         #instructions {
             color: #888;
-            margin-top: 15px;
-            font-size: 14px;
+            margin-top: 10px;
+            font-size: clamp(11px, 3vw, 14px);
         }
         .key { 
             background: #333; 
             padding: 3px 8px; 
             border-radius: 4px; 
             border: 1px solid #555;
+        }
+        
+        /* 手機控制按鈕 */
+        #mobileControls {
+            display: none;
+            width: 100%;
+            max-width: 480px;
+            margin-top: 15px;
+            gap: 10px;
+        }
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+        .control-btn {
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            color: #fff;
+            font-size: 28px;
+            width: 70px;
+            height: 70px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.1s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .control-btn:active, .control-btn.pressed {
+            background: rgba(243, 156, 18, 0.5);
+            border-color: #f39c12;
+            transform: scale(0.95);
+        }
+        .fire-btn {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: rgba(231, 76, 60, 0.3);
+            border-color: rgba(231, 76, 60, 0.5);
+            font-size: 20px;
+        }
+        .fire-btn:active, .fire-btn.pressed {
+            background: rgba(231, 76, 60, 0.7);
+            border-color: #e74c3c;
+        }
+        
+        /* 平板/手機時顯示觸控按鈕 */
+        @media (max-width: 768px), (pointer: coarse) {
+            #mobileControls { display: flex; flex-direction: column; }
+            #instructions { display: none; }
+            body { justify-content: flex-start; padding-top: 20px; }
+        }
+        
+        /* 橫向模式優化 */
+        @media (max-height: 500px) and (orientation: landscape) {
+            #mobileControls {
+                position: fixed;
+                bottom: 10px;
+                left: 0;
+                right: 0;
+                max-width: none;
+                padding: 0 20px;
+            }
+            .control-btn { width: 60px; height: 60px; font-size: 24px; }
+            .fire-btn { width: 80px; height: 80px; }
         }
     </style>
 </head>
@@ -56,11 +139,40 @@
             <span class="key">空白鍵</span> 射擊 | 
             <span class="key">R</span> 重新開始
         </div>
+        
+        <!-- 手機觸控按鈕 -->
+        <div id="mobileControls">
+            <div class="control-row">
+                <button class="control-btn" id="leftBtn">◀</button>
+                <button class="control-btn fire-btn" id="fireBtn">🔥<br>射擊</button>
+                <button class="control-btn" id="rightBtn">▶</button>
+            </div>
+        </div>
     </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        
+        // 響應式畫布大小
+        function resizeCanvas() {
+            const maxWidth = Math.min(window.innerWidth - 20, 480);
+            const maxHeight = window.innerHeight - 200;
+            const ratio = 480 / 640;
+            
+            let width = maxWidth;
+            let height = width / ratio;
+            
+            if (height > maxHeight) {
+                height = maxHeight;
+                width = height * ratio;
+            }
+            
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
         
         let score = 0;
         let lives = 3;
@@ -102,13 +214,79 @@
             });
         }
         
+        // 輸入狀態
         const keys = {};
+        const touch = { left: false, right: false, fire: false };
+        
+        // 鍵盤控制
         document.addEventListener('keydown', (e) => {
             keys[e.code] = true;
             if (e.code === 'Space') e.preventDefault();
             if (e.code === 'KeyR' && (gameOver || gameWon)) restartGame();
         });
         document.addEventListener('keyup', (e) => keys[e.code] = false);
+        
+        // 手機觸控控制
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        const fireBtn = document.getElementById('fireBtn');
+        
+        function setupTouchButton(btn, action) {
+            const start = (e) => {
+                e.preventDefault();
+                touch[action] = true;
+                btn.classList.add('pressed');
+            };
+            const end = (e) => {
+                e.preventDefault();
+                touch[action] = false;
+                btn.classList.remove('pressed');
+            };
+            
+            btn.addEventListener('touchstart', start, { passive: false });
+            btn.addEventListener('touchend', end, { passive: false });
+            btn.addEventListener('touchcancel', end, { passive: false });
+            btn.addEventListener('mousedown', start);
+            btn.addEventListener('mouseup', end);
+            btn.addEventListener('mouseleave', end);
+        }
+        
+        setupTouchButton(leftBtn, 'left');
+        setupTouchButton(rightBtn, 'right');
+        setupTouchButton(fireBtn, 'fire');
+        
+        // 畫布觸控滑動控制（備用）
+        let touchStartX = null;
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            touchStartX = e.touches[0].clientX;
+            // 點擊畫布也可以射擊
+            if (canShoot && !gameOver) {
+                bullets.push({ x: player.x + player.width / 2 - 2, y: player.y });
+                canShoot = false;
+                setTimeout(() => canShoot = true, shootCooldown);
+            }
+            if (gameOver || gameWon) restartGame();
+        }, { passive: false });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (touchStartX !== null) {
+                const touchX = e.touches[0].clientX;
+                const diff = touchX - touchStartX;
+                if (Math.abs(diff) > 10) {
+                    touch.left = diff < 0;
+                    touch.right = diff > 0;
+                }
+            }
+        }, { passive: false });
+        
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            touchStartX = null;
+            touch.left = false;
+            touch.right = false;
+        }, { passive: false });
         
         function createBees() {
             bees = [];
@@ -260,10 +438,15 @@
         function update() {
             if (gameOver || gameWon) return;
             
-            if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
-            if (keys['ArrowRight'] && player.x < canvas.width - player.width) player.x += player.speed;
+            // 鍵盤 + 觸控輸入
+            const moveLeft = keys['ArrowLeft'] || touch.left;
+            const moveRight = keys['ArrowRight'] || touch.right;
+            const shoot = keys['Space'] || touch.fire;
             
-            if (keys['Space'] && canShoot) {
+            if (moveLeft && player.x > 0) player.x -= player.speed;
+            if (moveRight && player.x < canvas.width - player.width) player.x += player.speed;
+            
+            if (shoot && canShoot) {
                 bullets.push({ x: player.x + player.width / 2 - 2, y: player.y });
                 canShoot = false;
                 setTimeout(() => canShoot = true, shootCooldown);
@@ -339,7 +522,8 @@
             ctx.fillStyle = '#fff';
             ctx.font = '24px sans-serif';
             ctx.fillText(`最終分數: ${score}`, canvas.width/2, canvas.height/2 + 20);
-            ctx.fillText('按 R 重新開始', canvas.width/2, canvas.height/2 + 60);
+            ctx.font = '20px sans-serif';
+            ctx.fillText('點擊畫面 或 按 R 重新開始', canvas.width/2, canvas.height/2 + 60);
         }
         
         function restartGame() {
