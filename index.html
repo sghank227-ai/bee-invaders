@@ -130,7 +130,7 @@
     <div id="gameContainer">
         <div id="info">
             <span id="score">分數: 0</span> | 
-            <span id="lives">❤️❤️❤️</span> | 
+            <span id="lives">❤️❤️❤️❤️❤️</span> | 
             <span id="level">第 1 波</span>
         </div>
         <canvas id="gameCanvas" width="480" height="640"></canvas>
@@ -175,7 +175,7 @@
         window.addEventListener('resize', resizeCanvas);
         
         let score = 0;
-        let lives = 3;
+        let lives = 5;
         let level = 1;
         let gameOver = false;
         let gameWon = false;
@@ -192,7 +192,7 @@
         let bullets = [];
         const bulletSpeed = 10;
         let canShoot = true;
-        let shootCooldown = 150;
+        let shootCooldown = 100;
         
         let bees = [];
         let beeDirection = 1;
@@ -200,7 +200,7 @@
         let beeDropAmount = 30;
         
         let enemyBullets = [];
-        let enemyShootChance = 0.003;
+        let enemyShootChance = 0.001;
         
         let particles = [];
         
@@ -310,8 +310,8 @@
                     });
                 }
             }
-            beeSpeed = 1 + level * 0.3;
-            enemyShootChance = 0.003 + level * 0.001;
+            beeSpeed = 0.6 + level * 0.15;
+            enemyShootChance = 0.001 + level * 0.0005;
         }
         
         function drawPlayer() {
@@ -527,7 +527,7 @@
         }
         
         function restartGame() {
-            score = 0; lives = 3; level = 1;
+            score = 0; lives = 5; level = 1;
             gameOver = false; gameWon = false;
             bullets = []; enemyBullets = []; particles = [];
             player.x = canvas.width / 2 - 25;
