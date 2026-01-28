@@ -91,17 +91,16 @@
             border-color: #f39c12;
             transform: scale(0.95);
         }
-        .fire-btn {
+        .big-btn {
             width: 100px;
             height: 100px;
-            border-radius: 50%;
-            background: rgba(231, 76, 60, 0.3);
-            border-color: rgba(231, 76, 60, 0.5);
-            font-size: 20px;
+            font-size: 36px;
         }
-        .fire-btn:active, .fire-btn.pressed {
-            background: rgba(231, 76, 60, 0.7);
-            border-color: #e74c3c;
+        .auto-fire-label {
+            color: #2ecc71;
+            font-size: 14px;
+            text-align: center;
+            padding: 10px;
         }
         
         /* 平板/手機時顯示觸控按鈕 */
@@ -122,7 +121,7 @@
                 padding: 0 20px;
             }
             .control-btn { width: 60px; height: 60px; font-size: 24px; }
-            .fire-btn { width: 80px; height: 80px; }
+            .big-btn { width: 80px; height: 80px; font-size: 28px; }
         }
     </style>
 </head>
@@ -130,7 +129,7 @@
     <div id="gameContainer">
         <div id="info">
             <span id="score">分數: 0</span> | 
-            <span id="lives">❤️❤️❤️❤️❤️</span> | 
+            <span id="lives">❤️❤️❤️❤️❤️❤️❤️</span> | 
             <span id="level">第 1 波</span>
         </div>
         <canvas id="gameCanvas" width="480" height="640"></canvas>
@@ -140,12 +139,12 @@
             <span class="key">R</span> 重新開始
         </div>
         
-        <!-- 手機觸控按鈕 -->
+        <!-- 手機觸控按鈕 (自動射擊，只需左右) -->
         <div id="mobileControls">
             <div class="control-row">
-                <button class="control-btn" id="leftBtn">◀</button>
-                <button class="control-btn fire-btn" id="fireBtn">🔥<br>射擊</button>
-                <button class="control-btn" id="rightBtn">▶</button>
+                <button class="control-btn big-btn" id="leftBtn">◀</button>
+                <div class="auto-fire-label">🔫 自動射擊中</div>
+                <button class="control-btn big-btn" id="rightBtn">▶</button>
             </div>
         </div>
     </div>
@@ -283,7 +282,7 @@
         window.addEventListener('resize', resizeCanvas);
         
         let score = 0;
-        let lives = 5;
+        let lives = 7;
         let level = 1;
         let gameOver = false;
         let gameWon = false;
@@ -308,7 +307,11 @@
         let beeDropAmount = 30;
         
         let enemyBullets = [];
-        let enemyShootChance = 0.001;
+        let enemyShootChance = 0.0005;
+        
+        // 偵測是否為手機/平板
+        const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        let autoFireInterval = null;
         
         let particles = [];
         
@@ -337,10 +340,9 @@
         });
         document.addEventListener('keyup', (e) => keys[e.code] = false);
         
-        // 手機觸控控制
+        // 手機觸控控制 (只有左右，自動射擊)
         const leftBtn = document.getElementById('leftBtn');
         const rightBtn = document.getElementById('rightBtn');
-        const fireBtn = document.getElementById('fireBtn');
         
         function setupTouchButton(btn, action) {
             const start = (e) => {
@@ -367,7 +369,6 @@
         
         setupTouchButton(leftBtn, 'left');
         setupTouchButton(rightBtn, 'right');
-        setupTouchButton(fireBtn, 'fire');
         
         // 畫布觸控滑動控制（備用）
         let touchStartX = null;
@@ -424,8 +425,8 @@
                     });
                 }
             }
-            beeSpeed = 0.6 + level * 0.15;
-            enemyShootChance = 0.001 + level * 0.0005;
+            beeSpeed = 0.5 + level * 0.1;
+            enemyShootChance = 0.0005 + level * 0.0002;
         }
         
         function drawPlayer() {
@@ -560,7 +561,8 @@
             if (moveLeft && player.x > 0) player.x -= player.speed;
             if (moveRight && player.x < canvas.width - player.width) player.x += player.speed;
             
-            if (shoot && canShoot) {
+            // 手機自動射擊，電腦按空白鍵射擊
+            if ((shoot || isMobile) && canShoot && !gameOver) {
                 bullets.push({ x: player.x + player.width / 2 - 2, y: player.y });
                 canShoot = false;
                 playShoot();
@@ -644,7 +646,7 @@
         }
         
         function restartGame() {
-            score = 0; lives = 5; level = 1;
+            score = 0; lives = 7; level = 1;
             gameOver = false; gameWon = false;
             bullets = []; enemyBullets = []; particles = [];
             player.x = canvas.width / 2 - 25;
