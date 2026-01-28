@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐝 小蜜蜂大作戰</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+        }
+        #gameContainer {
+            text-align: center;
+        }
+        #gameCanvas {
+            border: 3px solid #f39c12;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(243, 156, 18, 0.3);
+        }
+        #info {
+            color: #fff;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        #score { color: #f39c12; font-weight: bold; }
+        #lives { color: #e74c3c; }
+        #level { color: #2ecc71; }
+        #instructions {
+            color: #888;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+        .key { 
+            background: #333; 
+            padding: 3px 8px; 
+            border-radius: 4px; 
+            border: 1px solid #555;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="info">
+            <span id="score">分數: 0</span> | 
+            <span id="lives">❤️❤️❤️</span> | 
+            <span id="level">第 1 波</span>
+        </div>
+        <canvas id="gameCanvas" width="480" height="640"></canvas>
+        <div id="instructions">
+            <span class="key">←</span> <span class="key">→</span> 移動 | 
+            <span class="key">空白鍵</span> 射擊 | 
+            <span class="key">R</span> 重新開始
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let gameOver = false;
+        let gameWon = false;
+        
+        const player = {
+            x: canvas.width / 2 - 25,
+            y: canvas.height - 70,
+            width: 50,
+            height: 50,
+            speed: 7,
+            color: '#3498db'
+        };
+        
+        let bullets = [];
+        const bulletSpeed = 10;
+        let canShoot = true;
+        let shootCooldown = 150;
+        
+        let bees = [];
+        let beeDirection = 1;
+        let beeSpeed = 1;
+        let beeDropAmount = 30;
+        
+        let enemyBullets = [];
+        let enemyShootChance = 0.003;
+        
+        let particles = [];
+        
+        let stars = [];
+        for (let i = 0; i < 100; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2,
+                speed: Math.random() * 0.5 + 0.2
+            });
+        }
+        
+        const keys = {};
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'Space') e.preventDefault();
+            if (e.code === 'KeyR' && (gameOver || gameWon)) restartGame();
+        });
+        document.addEventListener('keyup', (e) => keys[e.code] = false);
+        
+        function createBees() {
+            bees = [];
+            const rows = 4 + Math.floor(level / 2);
+            const cols = 8;
+            const beeWidth = 40;
+            const beeHeight = 35;
+            const padding = 10;
+            const startX = (canvas.width - (cols * (beeWidth + padding))) / 2;
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    bees.push({
+                        x: startX + col * (beeWidth + padding),
+                        y: 50 + row * (beeHeight + padding),
+                        width: beeWidth,
+                        height: beeHeight,
+                        type: row < 2 ? 'queen' : 'worker',
+                        frame: 0,
+                        frameTimer: 0
+                    });
+                }
+            }
+            beeSpeed = 1 + level * 0.3;
+            enemyShootChance = 0.003 + level * 0.001;
+        }
+        
+        function drawPlayer() {
+            ctx.save();
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.moveTo(player.x + player.width / 2, player.y);
+            ctx.lineTo(player.x + player.width, player.y + player.height);
+            ctx.lineTo(player.x, player.y + player.height);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.fillStyle = '#2ecc71';
+            ctx.beginPath();
+            ctx.arc(player.x + player.width / 2, player.y + 25, 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#e74c3c';
+            ctx.fillRect(player.x - 5, player.y + 35, 15, 8);
+            ctx.fillRect(player.x + player.width - 10, player.y + 35, 15, 8);
+            
+            ctx.restore();
+        }
+        
+        function drawBee(bee) {
+            ctx.save();
+            const centerX = bee.x + bee.width / 2;
+            const centerY = bee.y + bee.height / 2;
+            
+            const wingOffset = Math.sin(Date.now() / 50 + bee.x) * 5;
+            
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            ctx.beginPath();
+            ctx.ellipse(centerX - 18, centerY - 5 + wingOffset, 12, 8, -0.3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.ellipse(centerX + 18, centerY - 5 - wingOffset, 12, 8, 0.3, 0, Math.PI * 2);
+            ctx.fill();
+            
+            const bodyColor = bee.type === 'queen' ? '#e74c3c' : '#f1c40f';
+            ctx.fillStyle = bodyColor;
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, 15, 18, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#2c3e50';
+            for (let i = 0; i < 3; i++) {
+                ctx.fillRect(centerX - 12, centerY - 5 + i * 8, 24, 4);
+            }
+            
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(centerX - 6, centerY - 10, 5, 0, Math.PI * 2);
+            ctx.arc(centerX + 6, centerY - 10, 5, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(centerX - 5, centerY - 10, 2, 0, Math.PI * 2);
+            ctx.arc(centerX + 7, centerY - 10, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#2c3e50';
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY + 18);
+            ctx.lineTo(centerX - 4, centerY + 25);
+            ctx.lineTo(centerX + 4, centerY + 25);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.restore();
+        }
+        
+        function drawBullet(bullet, isEnemy = false) {
+            ctx.fillStyle = isEnemy ? '#e74c3c' : '#2ecc71';
+            ctx.shadowColor = isEnemy ? '#e74c3c' : '#2ecc71';
+            ctx.shadowBlur = 10;
+            ctx.fillRect(bullet.x, bullet.y, 4, 15);
+            ctx.shadowBlur = 0;
+        }
+        
+        function drawStars() {
+            ctx.fillStyle = '#fff';
+            stars.forEach(star => {
+                ctx.globalAlpha = 0.5 + Math.random() * 0.5;
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            });
+            ctx.globalAlpha = 1;
+        }
+        
+        function updateStars() {
+            stars.forEach(star => {
+                star.y += star.speed;
+                if (star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+        }
+        
+        function createExplosion(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x: x, y: y,
+                    vx: (Math.random() - 0.5) * 8,
+                    vy: (Math.random() - 0.5) * 8,
+                    life: 1, color: color,
+                    size: Math.random() * 5 + 2
+                });
+            }
+        }
+        
+        function updateParticles() {
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.x += p.vx; p.y += p.vy; p.life -= 0.02;
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+            });
+            ctx.globalAlpha = 1;
+        }
+        
+        function update() {
+            if (gameOver || gameWon) return;
+            
+            if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
+            if (keys['ArrowRight'] && player.x < canvas.width - player.width) player.x += player.speed;
+            
+            if (keys['Space'] && canShoot) {
+                bullets.push({ x: player.x + player.width / 2 - 2, y: player.y });
+                canShoot = false;
+                setTimeout(() => canShoot = true, shootCooldown);
+            }
+            
+            bullets = bullets.filter(b => b.y > 0);
+            bullets.forEach(b => b.y -= bulletSpeed);
+            
+            enemyBullets = enemyBullets.filter(b => b.y < canvas.height);
+            enemyBullets.forEach(b => b.y += 5);
+            
+            let hitEdge = false;
+            bees.forEach(bee => {
+                bee.x += beeSpeed * beeDirection;
+                if (bee.x <= 0 || bee.x + bee.width >= canvas.width) hitEdge = true;
+            });
+            
+            if (hitEdge) {
+                beeDirection *= -1;
+                bees.forEach(bee => bee.y += beeDropAmount);
+            }
+            
+            bees.forEach(bee => {
+                if (Math.random() < enemyShootChance) {
+                    enemyBullets.push({ x: bee.x + bee.width / 2, y: bee.y + bee.height });
+                }
+            });
+            
+            bullets.forEach((bullet, bi) => {
+                bees.forEach((bee, bei) => {
+                    if (bullet.x < bee.x + bee.width && bullet.x + 4 > bee.x &&
+                        bullet.y < bee.y + bee.height && bullet.y + 15 > bee.y) {
+                        createExplosion(bee.x + bee.width/2, bee.y + bee.height/2, 
+                            bee.type === 'queen' ? '#e74c3c' : '#f1c40f');
+                        bees.splice(bei, 1); bullets.splice(bi, 1);
+                        score += bee.type === 'queen' ? 20 : 10;
+                        updateUI();
+                    }
+                });
+            });
+            
+            enemyBullets.forEach((bullet, bi) => {
+                if (bullet.x < player.x + player.width && bullet.x + 4 > player.x &&
+                    bullet.y < player.y + player.height && bullet.y + 15 > player.y) {
+                    createExplosion(player.x + player.width/2, player.y + player.height/2, '#3498db');
+                    enemyBullets.splice(bi, 1);
+                    lives--;
+                    updateUI();
+                    if (lives <= 0) gameOver = true;
+                }
+            });
+            
+            bees.forEach(bee => {
+                if (bee.y + bee.height >= player.y) gameOver = true;
+            });
+            
+            if (bees.length === 0) { level++; updateUI(); createBees(); }
+        }
+        
+        function updateUI() {
+            document.getElementById('score').textContent = `分數: ${score}`;
+            document.getElementById('lives').textContent = '❤️'.repeat(lives);
+            document.getElementById('level').textContent = `第 ${level} 波`;
+        }
+        
+        function drawGameOver() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#e74c3c';
+            ctx.font = 'bold 48px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('遊戲結束', canvas.width/2, canvas.height/2 - 30);
+            ctx.fillStyle = '#fff';
+            ctx.font = '24px sans-serif';
+            ctx.fillText(`最終分數: ${score}`, canvas.width/2, canvas.height/2 + 20);
+            ctx.fillText('按 R 重新開始', canvas.width/2, canvas.height/2 + 60);
+        }
+        
+        function restartGame() {
+            score = 0; lives = 3; level = 1;
+            gameOver = false; gameWon = false;
+            bullets = []; enemyBullets = []; particles = [];
+            player.x = canvas.width / 2 - 25;
+            createBees(); updateUI();
+        }
+        
+        function draw() {
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            drawStars(); updateStars(); updateParticles();
+            bees.forEach(drawBee); drawPlayer();
+            bullets.forEach(b => drawBullet(b, false));
+            enemyBullets.forEach(b => drawBullet(b, true));
+            if (gameOver) drawGameOver();
+        }
+        
+        function gameLoop() { update(); draw(); requestAnimationFrame(gameLoop); }
+        
+        createBees();
+        gameLoop();
+    </script>
+</body>
+</html>
