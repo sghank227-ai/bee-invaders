@@ -22,7 +22,7 @@
 
 ## 🔗 Play Now
 
-👉 [https://hankku.github.io/bee-invaders/](https://hankku.github.io/bee-invaders/)
+👉 [https://sghank227-ai.github.io/bee-invaders/](https://sghank227-ai.github.io/bee-invaders/)
 
 ---
 
