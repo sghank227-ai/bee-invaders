@@ -154,6 +154,114 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         
+        // ===== 🎵 音效系統 =====
+        let audioCtx = null;
+        let musicPlaying = false;
+        let musicInterval = null;
+        
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+        
+        // 播放音符
+        function playTone(freq, duration, type = 'square', volume = 0.1) {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.value = freq;
+            gain.gain.value = volume;
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+        
+        // 射擊音效
+        function playShoot() {
+            if (!audioCtx) return;
+            playTone(880, 0.05, 'square', 0.08);
+            setTimeout(() => playTone(1100, 0.05, 'square', 0.05), 30);
+        }
+        
+        // 爆炸音效
+        function playExplosion() {
+            if (!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.value = 150;
+            osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.2);
+            gain.gain.value = 0.15;
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        }
+        
+        // 被擊中音效
+        function playHit() {
+            if (!audioCtx) return;
+            playTone(200, 0.1, 'sawtooth', 0.15);
+            setTimeout(() => playTone(100, 0.15, 'sawtooth', 0.1), 100);
+        }
+        
+        // Game Over 音效
+        function playGameOver() {
+            if (!audioCtx) return;
+            const notes = [392, 349, 330, 262];
+            notes.forEach((freq, i) => {
+                setTimeout(() => playTone(freq, 0.3, 'square', 0.12), i * 200);
+            });
+        }
+        
+        // 升級音效
+        function playLevelUp() {
+            if (!audioCtx) return;
+            const notes = [523, 659, 784, 1047];
+            notes.forEach((freq, i) => {
+                setTimeout(() => playTone(freq, 0.15, 'square', 0.1), i * 100);
+            });
+        }
+        
+        // 背景音樂（簡單的迴圈旋律）
+        const bgmNotes = [
+            262, 294, 330, 262,  // C D E C
+            262, 294, 330, 262,  // C D E C  
+            330, 349, 392, 0,    // E F G -
+            330, 349, 392, 0,    // E F G -
+        ];
+        let bgmIndex = 0;
+        
+        function startMusic() {
+            if (musicPlaying) return;
+            initAudio();
+            musicPlaying = true;
+            musicInterval = setInterval(() => {
+                if (gameOver) return;
+                const note = bgmNotes[bgmIndex];
+                if (note > 0) {
+                    playTone(note, 0.15, 'triangle', 0.04);
+                }
+                bgmIndex = (bgmIndex + 1) % bgmNotes.length;
+            }, 200);
+        }
+        
+        function stopMusic() {
+            musicPlaying = false;
+            if (musicInterval) {
+                clearInterval(musicInterval);
+                musicInterval = null;
+            }
+        }
+        
         // 響應式畫布大小
         function resizeCanvas() {
             const maxWidth = Math.min(window.innerWidth - 20, 480);
@@ -223,6 +331,9 @@
             keys[e.code] = true;
             if (e.code === 'Space') e.preventDefault();
             if (e.code === 'KeyR' && (gameOver || gameWon)) restartGame();
+            // 第一次按鍵時啟動音效
+            initAudio();
+            startMusic();
         });
         document.addEventListener('keyup', (e) => keys[e.code] = false);
         
@@ -236,6 +347,9 @@
                 e.preventDefault();
                 touch[action] = true;
                 btn.classList.add('pressed');
+                // 第一次觸控時啟動音效
+                initAudio();
+                startMusic();
             };
             const end = (e) => {
                 e.preventDefault();
@@ -449,6 +563,7 @@
             if (shoot && canShoot) {
                 bullets.push({ x: player.x + player.width / 2 - 2, y: player.y });
                 canShoot = false;
+                playShoot();
                 setTimeout(() => canShoot = true, shootCooldown);
             }
             
@@ -483,6 +598,7 @@
                             bee.type === 'queen' ? '#e74c3c' : '#f1c40f');
                         bees.splice(bei, 1); bullets.splice(bi, 1);
                         score += bee.type === 'queen' ? 20 : 10;
+                        playExplosion();
                         updateUI();
                     }
                 });
@@ -494,16 +610,17 @@
                     createExplosion(player.x + player.width/2, player.y + player.height/2, '#3498db');
                     enemyBullets.splice(bi, 1);
                     lives--;
+                    playHit();
                     updateUI();
-                    if (lives <= 0) gameOver = true;
+                    if (lives <= 0) { gameOver = true; stopMusic(); playGameOver(); }
                 }
             });
             
             bees.forEach(bee => {
-                if (bee.y + bee.height >= player.y) gameOver = true;
+                if (bee.y + bee.height >= player.y) { gameOver = true; stopMusic(); playGameOver(); }
             });
             
-            if (bees.length === 0) { level++; updateUI(); createBees(); }
+            if (bees.length === 0) { level++; playLevelUp(); updateUI(); createBees(); }
         }
         
         function updateUI() {
@@ -532,6 +649,7 @@
             bullets = []; enemyBullets = []; particles = [];
             player.x = canvas.width / 2 - 25;
             createBees(); updateUI();
+            startMusic();
         }
         
         function draw() {
